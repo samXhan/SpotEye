@@ -57,6 +57,9 @@ def launch(
     if num_machines > 1 and len(num_gpus_per_machine) == 1:
         num_gpus_per_machine = num_gpus_per_machine * num_machines
     world_size = sum(num_gpus_per_machine)
+    local_device_count = num_gpus_per_machine[machine_rank]
+    if not torch.npu.is_available() or local_device_count > torch.npu.device_count():
+        raise RuntimeError("Requested Ascend NPUs are unavailable in this process.")
     if world_size > 1:
         # https://github.com/pytorch/pytorch/pull/14391
         # TODO prctl in spawned processes
@@ -106,6 +109,7 @@ def launch(
             daemon=False,
         )
     else:
+        torch.npu.set_device(0)
         main_func(*args)
 
 
@@ -119,9 +123,7 @@ def _distributed_worker(
     args,
     timeout=DEFAULT_TIMEOUT,
 ):
-    assert (
-        torch.cuda.is_available()
-    ), "cuda is not available. Please check your installation."
+    torch.npu.set_device(local_rank)
     """
     # original
     global_rank = machine_rank * num_gpus_per_machine + local_rank
@@ -133,7 +135,7 @@ def _distributed_worker(
     global_rank = prior_num_gpus + local_rank
     try:
         dist.init_process_group(
-            backend="NCCL",
+            backend="hccl",
             init_method=dist_url,
             world_size=world_size,
             rank=global_rank,
@@ -170,14 +172,6 @@ def _distributed_worker(
         pg = dist.new_group(ranks_on_i)
         if i == machine_rank:
             comm._LOCAL_PROCESS_GROUP = pg
-
-    """
-    # original
-    assert num_gpus_per_machine <= torch.cuda.device_count()
-    """
-    # change for multi machine
-    assert num_gpus_per_machine[machine_rank] <= torch.cuda.device_count()
-    torch.cuda.set_device(local_rank)
 
     # synchronize is needed here to prevent a possible timeout after calling init_process_group
     # See: https://github.com/facebookresearch/maskrcnn-benchmark/issues/172

@@ -22,6 +22,7 @@ import logging
 import os
 from collections import OrderedDict
 import torch
+import torch_npu  # Register the NPU device and HCCL backend.
 
 import psd2.utils.comm as comm
 from psd2.checkpoint import DetectionCheckpointer
@@ -327,8 +328,7 @@ def main(args):
         )
     # Ensure final eval uses the same weights as offline evaluation (model_final.pth)
     def _final_eval_with_reload():
-        if not comm.is_main_process():
-            return {}
+        comm.synchronize()
         model_final = os.path.join(cfg.OUTPUT_DIR, "model_final.pth")
         if os.path.exists(model_final):
             logger = logging.getLogger("psd2.trainer")

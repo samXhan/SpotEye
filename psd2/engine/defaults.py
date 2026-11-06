@@ -128,9 +128,9 @@ Run on multiple machines:
     parser.add_argument(
         "--num-gpus",
         type=int,
-        default=1,
+        default=[1],
         nargs="+",
-        help="numbers of gpus on each machine respectively",
+        help="number of Ascend NPUs on each machine",
     )
     parser.add_argument(
         "--num-machines", type=int, default=1, help="total number of machines"

@@ -55,7 +55,13 @@ class ROIAlign(nn.Module):
         assert rois.dim() == 2 and rois.size(1) == 5
         if input.is_quantized:
             input = input.dequantize()
-        return roi_align(
+        dtype = input.dtype
+        device = input.device
+        if device.type == "npu":
+            # CPU torchvision kernels preserve aligned sampling and autograd.
+            input = input.float().cpu()
+            rois = rois.cpu()
+        result = roi_align(
             input,
             rois.to(dtype=input.dtype),
             self.output_size,
@@ -63,6 +69,8 @@ class ROIAlign(nn.Module):
             self.sampling_ratio,
             self.aligned,
         )
+
+        return result.to(device=device, dtype=dtype)
 
     def __repr__(self):
         tmpstr = self.__class__.__name__ + "("

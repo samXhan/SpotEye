@@ -14,6 +14,11 @@ def batched_nms(
     Same as torchvision.ops.boxes.batched_nms, but safer.
     """
     assert boxes.shape[-1] == 4
+    if boxes.device.type == "npu":
+        keep = box_ops.batched_nms(
+            boxes.float().cpu(), scores.float().cpu(), idxs.cpu(), iou_threshold
+        )
+        return keep.to(boxes.device)
     # TODO may need better strategy.
     # Investigate after having a fully-cuda NMS op.
     if len(boxes) < 40000:

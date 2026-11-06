@@ -160,8 +160,8 @@ def inference_on_dataset(
             start_compute_time = time.perf_counter()
             if "Grounding" in evaluator.dataset_name:
                 compute_time_stamp=evaluator.process(inputs, model) #NOTE inference and eval
-                if torch.cuda.is_available():
-                    torch.cuda.synchronize()
+                if torch.npu.is_available():
+                    torch.npu.synchronize()
                 total_compute_time += compute_time_stamp - start_compute_time
                 start_eval_time = compute_time_stamp
                 total_eval_time += time.perf_counter() - start_eval_time
@@ -170,8 +170,8 @@ def inference_on_dataset(
                     outputs=model(inputs,infgt=True)
                 else:
                     outputs = model(inputs)
-                if torch.cuda.is_available():
-                    torch.cuda.synchronize()
+                if torch.npu.is_available():
+                    torch.npu.synchronize()
                 total_compute_time += time.perf_counter() - start_compute_time
 
                 start_eval_time = time.perf_counter()
