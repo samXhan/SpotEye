@@ -19,6 +19,10 @@ class SearchMapper(object):
     def __init__(self, cfg, is_train) -> None:
         self.is_train = is_train
         self.in_fmt = cfg.INPUT.FORMAT
+        self.load_depth = (
+            cfg.MODEL.META_ARCHITECTURE == "SpotEye"
+            and cfg.PERSON_SEARCH.DET.WITH_DEPTH_FUSION
+        )
         if self.is_train:
             self.augs = dT.AugmentationList(
                 [
@@ -174,7 +178,7 @@ class SearchMapper(object):
         img_path = img_dict["file_name"]
         img_arr = read_image(img_path, self.in_fmt)
         depth_arr = None
-        if "depth_file_name" in img_dict:
+        if self.load_depth and "depth_file_name" in img_dict:
             depth_arr = read_image(img_dict["depth_file_name"], self.in_fmt)
         boxes = []
         ids = []
@@ -324,7 +328,6 @@ class SearchMapperTextBased(SearchMapper):
         super().__init__(cfg,is_train)
         self.tokenizer=SimpleTokenizer()
         self.max_num_text=cfg.INPUT.MAX_QUERY_NUM
-        self.with_depth_fusion = bool(cfg.PERSON_SEARCH.DET.WITH_DEPTH_FUSION)
         self._dbg_count = 0
     def tokenize(self,caption: str, text_length=77, truncate=True) -> torch.LongTensor:
         sot_token = self.tokenizer.encoder["<|startoftext|>"]
@@ -346,7 +349,7 @@ class SearchMapperTextBased(SearchMapper):
         img_path = img_dict["file_name"]
         img_arr = read_image(img_path, self.in_fmt)
         depth_arr = None
-        if self.with_depth_fusion and "depth_file_name" in img_dict:
+        if self.load_depth and "depth_file_name" in img_dict:
             depth_arr = read_image(img_dict["depth_file_name"], self.in_fmt)
         boxes = []
         ids = []
