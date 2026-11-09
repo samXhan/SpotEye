@@ -23,9 +23,9 @@ python tools/train_ps_net.py --num-gpus 1 --config-file configs/person_search/sp
 ```
 
 `--num-gpus` counts NPUs on this branch. Multi-device training uses HCCL
-and uses Gloo for gathering Python evaluation objects. Standard batched NMS
-and ROIAlign run on the CPU for torchvision compatibility and return results
-to the NPU. ROIAlign keeps the autograd path across the device copies.
+and uses Gloo for gathering Python evaluation objects. ROIAlign uses Ascend
+kernels for forward and backward on NPU. Standard batched NMS uses the CPU
+torchvision kernel.
 
 SpotEye is a depth-assisted framework for text-based person search. The code
 uses CUHK-SYSU-TBPS and PRW-TBPS RGB images together with grayscale monocular

@@ -1,6 +1,45 @@
 # Copyright (c) Facebook, Inc. and its affiliates.
+import torch
 from torch import nn
+from torch.autograd.function import once_differentiable
+from torch.nn.modules.utils import _pair
 from torchvision.ops import roi_align
+
+
+class _NPUROIAlign(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, features, rois, height, width, scale, sampling_ratio, end_mode):
+        ctx.save_for_backward(rois)
+        ctx.input_shape = features.shape
+        ctx.output_size = height, width
+        ctx.scale = scale
+        ctx.sampling_ratio = sampling_ratio
+        ctx.end_mode = end_mode
+        if rois.numel() == 0:
+            return features.new_empty((0, features.shape[1], height, width))
+        return torch.ops.npu.npu_roi_align(
+            features, rois, scale, height, width, sampling_ratio, end_mode
+        )
+
+    @staticmethod
+    @once_differentiable
+    def backward(ctx, grad_output):
+        (rois,) = ctx.saved_tensors
+        height, width = ctx.output_size
+        if rois.numel() == 0:
+            grad_input = grad_output.new_zeros(ctx.input_shape)
+        else:
+            grad_input = torch.ops.npu.npu_roi_alignbk(
+                grad_output.contiguous(),
+                rois,
+                ctx.input_shape,
+                width,
+                height,
+                ctx.scale,
+                ctx.sampling_ratio,
+                ctx.end_mode,
+            )
+        return grad_input, None, None, None, None, None, None
 
 
 # NOTE: torchvision's RoIAlign has a different default aligned=False
@@ -55,13 +94,9 @@ class ROIAlign(nn.Module):
         assert rois.dim() == 2 and rois.size(1) == 5
         if input.is_quantized:
             input = input.dequantize()
-        dtype = input.dtype
-        device = input.device
-        if device.type == "npu":
-            # CPU torchvision kernels preserve aligned sampling and autograd.
-            input = input.float().cpu()
-            rois = rois.cpu()
-        result = roi_align(
+        if input.device.type == "npu":
+            return self._forward_npu(input, rois)
+        return roi_align(
             input,
             rois.to(dtype=input.dtype),
             self.output_size,
@@ -70,7 +105,19 @@ class ROIAlign(nn.Module):
             self.aligned,
         )
 
-        return result.to(device=device, dtype=dtype)
+    @torch.jit.unused
+    def _forward_npu(self, input, rois):
+        height, width = _pair(self.output_size)
+        pooled = _NPUROIAlign.apply(
+            input.float(),
+            rois.to(device=input.device, dtype=torch.float32).contiguous(),
+            height,
+            width,
+            self.spatial_scale,
+            max(self.sampling_ratio, 0),
+            2 if self.aligned else 0,
+        )
+        return pooled.to(dtype=input.dtype)
 
     def __repr__(self):
         tmpstr = self.__class__.__name__ + "("
